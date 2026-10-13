@@ -91,14 +91,10 @@ def clean_json_response(content: str) -> dict:
 
 
 def customize_with_gemini(job_description: str, resume_text: str, api_key: str) -> CustomizationResult:
-    import google.generativeai as genai
-    genai.configure(api_key=api_key)
+    from google import genai
+    from google.genai import types
     
-    # Try gemini-1.5-flash or gemini-2.0-flash
-    model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
-        generation_config={"response_mime_type": "application/json"}
-    )
+    client = genai.Client(api_key=api_key)
     
     prompt = f"""
 {SYSTEM_PROMPT}
@@ -111,9 +107,35 @@ JOB DESCRIPTION:
 ORIGINAL RESUME:
 {resume_text}
 """
-    response = model.generate_content(prompt)
-    data = clean_json_response(response.text)
-    return CustomizationResult(**data)
+    
+    models_to_try = [
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-2.5-flash"
+    ]
+    
+    last_err = None
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.3,
+                )
+            )
+            data = clean_json_response(response.text)
+            return CustomizationResult(**data)
+        except Exception as e:
+            last_err = e
+            continue
+            
+    if last_err:
+        raise last_err
+    raise RuntimeError("Failed to generate response with Gemini.")
 
 
 def customize_with_groq(job_description: str, resume_text: str, api_key: str) -> CustomizationResult:
